@@ -1,0 +1,2 @@
+# freifunk
+Freifunk related stuff

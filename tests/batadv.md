@@ -8,4 +8,5 @@ Setup:
 * [x86 kvm] <--ethernet--> [DUT] <--ethernet--> [x86 kvm]
 
 Devices:
-- WDR4300: ~400 Mbit/s (maxed out by softirqs)
+- TL-WDR4300: ~400 Mbit/s (maxed out by softirqs)
+- TL-WR841n/ND (V11): ~80 Mbit/s (maxed out by interface speed)

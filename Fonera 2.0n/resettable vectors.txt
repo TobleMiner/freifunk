@@ -1,0 +1,22 @@
+RT3050:
+Resetting options & Regsiters:
+Reset WLAN Block: RSTCTL->WLAN_RST (0x34)
+Reset DMA Block: RSTCTL->DMA (0x34)
+
+Transmitter Reset: FCR->TXRST (0x10)
+
+Wlan 8051:
+MAC Reset: SYS_CTRL->MAC_RESET (0x0400)
+DMA_RESET: SYS_CTRL->DMA_RESET (0x0400)
+MCU_RESET: SYS_CTRL->MCU_RESET (0x0400)
+
+BUF_RESET: BUF_CTRL->BUF_RESET (0x0410)
+
+MAC soft reset
+MAC_SRST: MAC_SYS_CTRL->MAC_SRST (0x1004)
+
+Baseband processor(?) hard reset
+BBP_HRST: MAC_SYS_CTRL->BBP_HRST (0x1004)
+
+Notifying mac80211:
+void ieee80211_restart_hw(struct ieee80211_hw *hw);

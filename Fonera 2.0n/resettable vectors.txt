@@ -1,4 +1,4 @@
-RT3050:
+RT3052:
 Resetting options & Regsiters:
 Reset WLAN Block: RSTCTL->WLAN_RST (0x34)
 Reset DMA Block: RSTCTL->DMA (0x34)

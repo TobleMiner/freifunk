@@ -1,0 +1,121 @@
+--- a/drivers/net/wireless/ralink/rt2x00/rt2x00.h
++++ b/drivers/net/wireless/ralink/rt2x00/rt2x00.h
+@@ -940,6 +940,11 @@ struct rt2x00_dev {
+ 	 */
+ 	struct workqueue_struct *workqueue;
+ 
++	/**
++	 * Scheduled work for device reinitialization
++	 */
++	struct work_struct reinit_work;
++
+ 	/*
+ 	 * Scheduled work.
+ 	 * NOTE: intf_work will use ieee80211_iterate_active_interfaces()
+--- a/drivers/net/wireless/ralink/rt2x00/rt2x00dev.c
++++ b/drivers/net/wireless/ralink/rt2x00/rt2x00dev.c
+@@ -28,10 +28,40 @@
+ #include <linux/log2.h>
+ #include <linux/of.h>
+ #include <linux/of_net.h>
++#include <linux/platform_device.h>
+ 
+ #include "rt2x00.h"
+ #include "rt2x00lib.h"
+ 
++static void rt2x00lib_uninitialize(struct rt2x00_dev *rt2x00dev);
++
++// Not sure about syncing here
++void rt2x00soc_soft_reinit(struct rt2x00_dev* rt2x00dev)
++{
++	rt2x00lib_stop(rt2x00dev);
++	rt2x00lib_uninitialize(rt2x00dev);
++	ieee80211_restart_hw(rt2x00dev->hw);
++}
++
++static void rt2x00lib_reinit_work(struct work_struct *work)
++{
++	struct rt2x00_dev *rt2x00dev =
++		container_of(work, struct rt2x00_dev, reinit_work);
++	rt2x00soc_soft_reinit(rt2x00dev);
++}
++
++static ssize_t rt2x00soc_soft_reinit_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t count)
++{
++	dev_warn(dev, "Restarting wlan device\n");
++	struct platform_device* pdev = to_platform_device(dev);
++	struct ieee80211_hw* hw = platform_get_drvdata(pdev);
++	struct rt2x00_dev* rt2x00dev = hw->priv;
++	rt2x00soc_soft_reinit(rt2x00dev);
++	return count;
++}
++
++static DEVICE_ATTR(soft_reinit, 0200, NULL, rt2x00soc_soft_reinit_store);
++
+ /*
+  * Utility functions.
+  */
+@@ -1381,6 +1411,7 @@ int rt2x00lib_probe_dev(struct rt2x00_de
+ 		goto exit;
+ 	}
+ 
++	INIT_WORK(&rt2x00dev->reinit_work, rt2x00lib_reinit_work);
+ 	INIT_WORK(&rt2x00dev->intf_work, rt2x00lib_intf_scheduled);
+ 	INIT_DELAYED_WORK(&rt2x00dev->autowakeup_work, rt2x00lib_autowakeup);
+ 	INIT_WORK(&rt2x00dev->sleep_work, rt2x00lib_sleep);
+@@ -1447,6 +1478,8 @@ int rt2x00lib_probe_dev(struct rt2x00_de
+ 	if (!rt2x00_has_cap_flag(rt2x00dev, REQUIRE_DELAYED_RFKILL))
+ 		rt2x00rfkill_register(rt2x00dev);
+ 
++	device_create_file(rt2x00dev->dev, &dev_attr_soft_reinit);	
++
+ 	return 0;
+ 
+ exit:
+@@ -1460,6 +1493,8 @@ void rt2x00lib_remove_dev(struct rt2x00_
+ {
+ 	clear_bit(DEVICE_STATE_PRESENT, &rt2x00dev->flags);
+ 
++	device_remove_file(rt2x00dev->dev, &dev_attr_soft_reinit);
++
+ 	/*
+ 	 * Stop rfkill polling.
+ 	 */
+@@ -1474,6 +1509,7 @@ void rt2x00lib_remove_dev(struct rt2x00_
+ 	/*
+ 	 * Stop all work.
+ 	 */
++	cancel_work_sync(&rt2x00dev->reinit_work);
+ 	cancel_work_sync(&rt2x00dev->intf_work);
+ 	cancel_delayed_work_sync(&rt2x00dev->autowakeup_work);
+ 	cancel_work_sync(&rt2x00dev->sleep_work);
+--- a/drivers/net/wireless/ralink/rt2x00/rt2x00lib.h
++++ b/drivers/net/wireless/ralink/rt2x00/rt2x00lib.h
+@@ -481,4 +481,6 @@ static inline void rt2x00leds_resume(str
+ }
+ #endif /* CPTCFG_RT2X00_LIB_LEDS */
+ 
++void rt2x00soc_soft_reinit(struct rt2x00_dev* rt2x00dev);
++
+ #endif /* RT2X00LIB_H */
+--- a/drivers/net/wireless/ralink/rt2x00/rt2x00queue.c
++++ b/drivers/net/wireless/ralink/rt2x00/rt2x00queue.c
+@@ -27,6 +27,7 @@
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/dma-mapping.h>
++#include <linux/workqueue.h>
+ 
+ #include "rt2x00.h"
+ #include "rt2x00lib.h"
+@@ -671,8 +672,9 @@ int rt2x00queue_write_tx_frame(struct da
+ 	spin_lock(&queue->tx_lock);
+ 
+ 	if (unlikely(rt2x00queue_full(queue))) {
+-		rt2x00_err(queue->rt2x00dev, "Dropping frame due to full tx queue %d\n",
++		rt2x00_err(queue->rt2x00dev, "Resetting device due to full tx queue %d\n",
+ 			   queue->qid);
++		queue_work(queue->rt2x00dev->workqueue, &queue->rt2x00dev->reinit_work);
+ 		ret = -ENOBUFS;
+ 		goto out;
+ 	}

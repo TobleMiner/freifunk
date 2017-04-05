@@ -1,0 +1,15 @@
+FONERA
+======
+
+Current status: Found bug that prevents beacons/multicast/bcast from working, it's a disabled irq timer
+
+Setting the timer irq flag again allows flawless operation.
+
+HOWEVER, as soon as a fifo overflow occures and the mac hw is reset and irq flags restored the issue happens again immediately.
+
+Possible solutions:
+
+Scrap all socketbuffers. The overflow seems to be related to mcast/bcast/beacon frames, start there
+
+There is still state somewhere in the hardware and it's a hardware bug
+

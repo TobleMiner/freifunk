@@ -13,3 +13,14 @@ Scrap all socketbuffers. The overflow seems to be related to mcast/bcast/beacon 
 
 There is still state somewhere in the hardware and it's a hardware bug
 
+SUCCESS!
+
+On queue overflow do this:
+1. Stop rt2800
+2. Uninitialize r2800
+3. Set PBF_RESET, DMA_RESET, MCU_RESET in PBF_SYS_CTRL
+4. Wait for MCU_RESET and MCU_READY in PBF_SYS_CTRL
+5. Call ieee80211_restart_hw
+
+Issues:
+It looks like the rt2800 can't process some frames. It just hangs up in them and they are never sent. Thus when mac80211 schedules them for retransmission after the hardware is restarted it will hang up again immediately. We'll have to find a workaround for that

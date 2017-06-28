@@ -1,0 +1,596 @@
+From 6ed5a0c623d32f4f0c4587b7b09bc887bded1aea Mon Sep 17 00:00:00 2001
+From: Tobias Schramm <tobleminer@gmail.com>
+Date: Wed, 28 Jun 2017 17:43:02 +0200
+Subject: [PATCH] Apply fonera patches
+
+This patch is a STANDALONE Version of the previous 950/970 fonera patches
+
+---
+ drivers/net/wireless/ralink/rt2x00/rt2800.h      |   7 +-
+ drivers/net/wireless/ralink/rt2x00/rt2800lib.c   |   1 +
+ drivers/net/wireless/ralink/rt2x00/rt2800mmio.c  |   6 +
+ drivers/net/wireless/ralink/rt2x00/rt2800soc.c   | 212 ++++++++++++++++++++++-
+ drivers/net/wireless/ralink/rt2x00/rt2x00.h      |   3 +
+ drivers/net/wireless/ralink/rt2x00/rt2x00dev.c   |  43 ++++-
+ drivers/net/wireless/ralink/rt2x00/rt2x00mmio.c  |   6 +
+ drivers/net/wireless/ralink/rt2x00/rt2x00queue.c |  34 +++-
+ 8 files changed, 305 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/net/wireless/ralink/rt2x00/rt2800.h b/drivers/net/wireless/ralink/rt2x00/rt2800.h
+index ae8424e..8fcff73 100644
+--- a/drivers/net/wireless/ralink/rt2x00/rt2800.h
++++ b/drivers/net/wireless/ralink/rt2x00/rt2800.h
+@@ -576,6 +576,10 @@
+  * HOST_RAM_WRITE: enable Host program ram write selection
+  */
+ #define PBF_SYS_CTRL			0x0400
++#define PBF_SYS_CTRL_PBF_RESET		FIELD32(0x00000008)
++#define PBF_SYS_CTRL_MCU_RESET		FIELD32(0x00000001)
++#define PBF_SYS_CTRL_MAC_RESET		FIELD32(0x00000004)
++#define PBF_SYS_CTRL_DMA_RESET		FIELD32(0x00000002)
+ #define PBF_SYS_CTRL_READY		FIELD32(0x00000080)
+ #define PBF_SYS_CTRL_HOST_RAM_WRITE	FIELD32(0x00010000)
+ 
+@@ -587,11 +591,12 @@
+ 
+ /*
+  * PBF registers
+- * Most are for debug. Driver doesn't touch PBF register.
++ * Most are for debug. Driver does now touch PBF register. (But we probably shouldn't)
+  */
+ #define PBF_CFG				0x0408
+ #define PBF_MAX_PCNT			0x040c
+ #define PBF_CTRL			0x0410
++#define PBF_CTRL_BUF_RESET		FIELD32(0x0000020)
+ #define PBF_INT_STA			0x0414
+ #define PBF_INT_ENA			0x0418
+ 
+diff --git a/drivers/net/wireless/ralink/rt2x00/rt2800lib.c b/drivers/net/wireless/ralink/rt2x00/rt2800lib.c
+index 9b5dde5..3349736 100644
+--- a/drivers/net/wireless/ralink/rt2x00/rt2800lib.c
++++ b/drivers/net/wireless/ralink/rt2x00/rt2800lib.c
+@@ -1117,6 +1117,7 @@ void rt2800_write_beacon(struct queue_entry *entry, struct txentry_desc *txdesc)
+ 	 */
+ 	rt2800_register_read(rt2x00dev, BCN_TIME_CFG, &reg);
+ 	orig_reg = reg;
++//	printk(KERN_INFO "RT2800lib: Beacon time config: %u\n", orig_reg);
+ 	rt2x00_set_field32(&reg, BCN_TIME_CFG_BEACON_GEN, 0);
+ 	rt2800_register_write(rt2x00dev, BCN_TIME_CFG, reg);
+ 
+diff --git a/drivers/net/wireless/ralink/rt2x00/rt2800mmio.c b/drivers/net/wireless/ralink/rt2x00/rt2800mmio.c
+index 79aeced..d7477be 100644
+--- a/drivers/net/wireless/ralink/rt2x00/rt2800mmio.c
++++ b/drivers/net/wireless/ralink/rt2x00/rt2800mmio.c
+@@ -606,6 +606,8 @@ void rt2800mmio_start_queue(struct data_queue *queue)
+ 	struct rt2x00_dev *rt2x00dev = queue->rt2x00dev;
+ 	u32 reg;
+ 
++	printk(KERN_INFO "MMIO: Starting queue %u\n", queue->qid);
++
+ 	switch (queue->qid) {
+ 	case QID_RX:
+ 		rt2x00mmio_register_read(rt2x00dev, MAC_SYS_CTRL, &reg);
+@@ -613,6 +615,7 @@ void rt2800mmio_start_queue(struct data_queue *queue)
+ 		rt2x00mmio_register_write(rt2x00dev, MAC_SYS_CTRL, reg);
+ 		break;
+ 	case QID_BEACON:
++		printk(KERN_INFO "Starting beacon queue\n");
+ 		rt2x00mmio_register_read(rt2x00dev, BCN_TIME_CFG, &reg);
+ 		rt2x00_set_field32(&reg, BCN_TIME_CFG_TSF_TICKING, 1);
+ 		rt2x00_set_field32(&reg, BCN_TIME_CFG_TBTT_ENABLE, 1);
+@@ -659,6 +662,8 @@ void rt2800mmio_stop_queue(struct data_queue *queue)
+ 	struct rt2x00_dev *rt2x00dev = queue->rt2x00dev;
+ 	u32 reg;
+ 
++	printk(KERN_INFO "MMIO: Stopping queue %u\n", queue->qid);
++
+ 	switch (queue->qid) {
+ 	case QID_RX:
+ 		rt2x00mmio_register_read(rt2x00dev, MAC_SYS_CTRL, &reg);
+@@ -792,6 +797,7 @@ int rt2800mmio_init_queues(struct rt2x00_dev *rt2x00dev)
+ 	/*
+ 	 * Initialize registers.
+ 	 */
++	dev_info(rt2x00dev->dev, "MMIO: Queue register reset\n");
+ 	entry_priv = rt2x00dev->tx[0].entries[0].priv_data;
+ 	rt2x00mmio_register_write(rt2x00dev, TX_BASE_PTR0,
+ 				  entry_priv->desc_dma);
+diff --git a/drivers/net/wireless/ralink/rt2x00/rt2800soc.c b/drivers/net/wireless/ralink/rt2x00/rt2800soc.c
+index fb934fc..d174848 100644
+--- a/drivers/net/wireless/ralink/rt2x00/rt2800soc.c
++++ b/drivers/net/wireless/ralink/rt2x00/rt2800soc.c
+@@ -31,6 +31,8 @@
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
++#include <linux/string.h>
++#include <linux/vmalloc.h>
+ 
+ #include "rt2x00.h"
+ #include "rt2x00mmio.h"
+@@ -44,6 +46,193 @@ static bool modparam_nohwcrypt;
+ module_param_named(nohwcrypt, modparam_nohwcrypt, bool, S_IRUGO);
+ MODULE_PARM_DESC(nohwcrypt, "Disable hardware encryption.");
+ 
++static void khexdump(unsigned char* ptr, u32 length)
++{
++	while(length-- > 0)
++	{
++		printk("%02x ", *ptr);
++		ptr++;
++	}
++	printk("\n");
++}
++
++void rt2800_dump_descriptor_and_frame(struct queue_entry* entry)
++{
++	printk(KERN_INFO "descriptor:\n");
++	khexdump((unsigned char*)((struct queue_entry_priv_mmio*)entry->priv_data)->desc, TXD_DESC_SIZE);
++	printk(KERN_INFO "frame:\n");
++	khexdump((unsigned char*)entry->skb->data, entry->skb->len);
++}
++
++void rt2800_dump_queue_frame(struct data_queue* queue)
++{
++	// I assume something is wrong with the queue entry (frame) it is stuck at
++	u32 frameid_8051, frameid_soc, frameid_max;
++	rt2x00mmio_register_read(queue->rt2x00dev, TX_MAX_CNT2, &frameid_max);
++	rt2x00mmio_register_read(queue->rt2x00dev, TX_CTX_IDX2, &frameid_8051);
++	rt2x00mmio_register_read(queue->rt2x00dev, TX_DTX_IDX2, &frameid_soc);
++	dev_info(queue->rt2x00dev->dev, "Queue 2: SOC is @%u, 8051 is @%u, max is %u\n", frameid_soc, frameid_8051, frameid_max);
++	if(frameid_soc >= frameid_max)
++	{
++		dev_warn(queue->rt2x00dev->dev, "frameid_soc is larger than frameid_max");
++	}
++	else
++	{
++		u32 frame_before_soc = ((int)frameid_soc) - 1 < 0 ? 0 : frameid_soc - 1;
++		dev_info(queue->rt2x00dev->dev, "[SOC] Dumping last frame descriptor:\n");
++		rt2800_dump_descriptor_and_frame(&queue->entries[frame_before_soc]);
++		dev_info(queue->rt2x00dev->dev, "[SOC] Dumping current frame descriptor:\n");
++		rt2800_dump_descriptor_and_frame(&queue->entries[frameid_soc]);
++	}
++	if(frameid_8051 >= frameid_max)
++	{
++		dev_warn(queue->rt2x00dev->dev, "frameid_8051 is larger than frameid_max");
++	}
++	else
++	{
++		u32 frame_before_8051 = ((int)frameid_8051) - 1 < 0 ? 0 : frameid_8051 - 1;
++		dev_info(queue->rt2x00dev->dev, "[8051] Dumping last frame descriptor:\n");
++		rt2800_dump_descriptor_and_frame(&queue->entries[frame_before_8051]);
++		dev_info(queue->rt2x00dev->dev, "[8051] Dumping current frame descriptor:\n");
++		rt2800_dump_descriptor_and_frame(&queue->entries[frameid_8051]);
++	}
++}
++
++u32 regaddr = 0x0200;
++
++#define DEV_TO_RT2X00(dev) (struct rt2x00_dev*)(((struct ieee80211_hw*)platform_get_drvdata(to_platform_device(dev)))->priv)
++
++static ssize_t rt2800soc_mac_addr_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t count)
++{
++	ssize_t err;
++	if((err = kstrtou32(buf, 16, &regaddr)))
++		return err;
++	return count;
++}
++
++ssize_t rt2800soc_mac_addr_load(struct device* dev, struct device_attribute* attr, char* buf)
++{
++	return sprintf(buf, "0x%04x\n", regaddr);
++}
++
++static ssize_t rt2800soc_mac_reg_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t count)
++{
++	u32 regval;
++        ssize_t err = 0;
++	if((err = kstrtou32(buf, 16, &regval)))
++		return err;
++        struct rt2x00_dev* rt2x00dev = DEV_TO_RT2X00(dev);
++	rt2x00mmio_register_write(rt2x00dev, regaddr, regval);
++	return count;
++}
++
++ssize_t rt2800soc_mac_reg_load(struct device* dev, struct device_attribute* attr, char* buf)
++{
++        u32 reg;
++        ssize_t err = 0;
++        struct rt2x00_dev* rt2x00dev = DEV_TO_RT2X00(dev);
++        rt2x00mmio_register_read(rt2x00dev, regaddr, &reg);
++        return sprintf(buf, "0x%08x\n", reg);
++}
++
++static ssize_t rt2800soc_fix_pre_tbtt_irq_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t count)
++{
++	u32 reg;
++	struct rt2x00_dev* rt2x00dev = DEV_TO_RT2X00(dev);
++	rt2x00mmio_register_read(rt2x00dev, BCN_TIME_CFG, &reg);
++	rt2x00_set_field32(&reg, BCN_TIME_CFG_TSF_TICKING, 1);
++	rt2x00_set_field32(&reg, BCN_TIME_CFG_TBTT_ENABLE, 1);
++	rt2x00_set_field32(&reg, BCN_TIME_CFG_BEACON_GEN, 1);
++	rt2x00mmio_register_write(rt2x00dev, BCN_TIME_CFG, reg);
++
++	rt2x00mmio_register_read(rt2x00dev, INT_TIMER_EN, &reg);
++	rt2x00_set_field32(&reg, INT_TIMER_EN_PRE_TBTT_TIMER, 1);
++	rt2x00mmio_register_write(rt2x00dev, INT_TIMER_EN, reg);
++	return count;
++}
++
++static ssize_t rt2800soc_restart_xmitter(struct device* dev, struct device_attribute* attr, const char* buf, size_t count)
++{
++	u32 reg;
++	struct rt2x00_dev* rt2x00dev = DEV_TO_RT2X00(dev);
++	rt2x00mmio_register_read(rt2x00dev, MAC_SYS_CTRL, &reg);
++	rt2x00_set_field32(&reg, MAC_SYS_CTRL_ENABLE_TX, 0);
++	rt2x00mmio_register_write(rt2x00dev, MAC_SYS_CTRL, reg);
++	rt2x00_set_field32(&reg, MAC_SYS_CTRL_ENABLE_TX, 1);
++	rt2x00mmio_register_write(rt2x00dev, MAC_SYS_CTRL, reg);
++	return count;
++}
++
++static DEVICE_ATTR(restart_xmitter, 0200, NULL, rt2800soc_restart_xmitter);
++static DEVICE_ATTR(fix_pre_tbtt_irq, 0200, NULL, rt2800soc_fix_pre_tbtt_irq_store);
++
++static DEVICE_ATTR(mac_reg, 0600, rt2800soc_mac_reg_load, rt2800soc_mac_reg_store);
++static DEVICE_ATTR(mac_addr, 0600, rt2800soc_mac_addr_load, rt2800soc_mac_addr_store);
++
++static void rt2800_hw_restart(struct rt2x00_dev* rt2x00dev)
++{
++	int i;
++	u32 reg;
++	rt2x00mmio_register_read(rt2x00dev, PBF_SYS_CTRL, &reg);
++	rt2x00_set_field32(&reg, PBF_SYS_CTRL_PBF_RESET, 1);
++	rt2x00_set_field32(&reg, PBF_SYS_CTRL_MCU_RESET, 1);
++//	rt2x00_set_field32(&reg, PBF_SYS_CTRL_MAC_RESET, 1); BAD IDEA!
++	rt2x00_set_field32(&reg, PBF_SYS_CTRL_DMA_RESET, 1);
++	rt2x00mmio_register_write(rt2x00dev, PBF_SYS_CTRL, reg);
++
++	for (i = 0; i < REGISTER_BUSY_COUNT; i++) {
++		rt2x00mmio_register_read(rt2x00dev, PBF_SYS_CTRL, &reg);
++		if(!rt2x00_get_field32(reg, PBF_SYS_CTRL_MCU_RESET) &&
++			rt2x00_get_field32(reg, PBF_SYS_CTRL_READY))
++		{
++			dev_info(rt2x00dev->dev, "MCU ready!");
++			break;
++		}
++		msleep(10);
++	}
++
++	if(!rt2x00_get_field32(reg, PBF_SYS_CTRL_READY))
++		dev_warn(rt2x00dev->dev, "MCU not ready!");
++
++	rt2x00_set_field32(&reg, PBF_SYS_CTRL_PBF_RESET, 0);
++	rt2x00_set_field32(&reg, PBF_SYS_CTRL_DMA_RESET, 0);
++	rt2x00_set_field32(&reg, PBF_SYS_CTRL_MCU_RESET, 0);
++//	rt2x00_set_field32(&reg, PBF_SYS_CTRL_MAC_RESET, 0); BAD IDEA!
++	rt2x00_set_field32(&reg, PBF_SYS_CTRL_READY, 1);
++	rt2x00mmio_register_write(rt2x00dev, PBF_SYS_CTRL, reg);
++
++
++
++/*	rt2x00mmio_register_read(rt2x00dev, MAC_SYS_CTRL, &reg);
++	rt2x00_set_field32(&reg, MAC_SYS_CTRL_ENABLE_TX, 0);
++	rt2x00mmio_register_write(rt2x00dev, MAC_SYS_CTRL, reg);
++	rt2x00_set_field32(&reg, MAC_SYS_CTRL_ENABLE_TX, 1);
++	rt2x00mmio_register_write(rt2x00dev, MAC_SYS_CTRL, reg);
++
++	rt2x00mmio_register_read(rt2x00dev, BCN_TIME_CFG, &reg);
++	rt2x00_set_field32(&reg, BCN_TIME_CFG_TSF_TICKING, 1);
++	rt2x00_set_field32(&reg, BCN_TIME_CFG_TBTT_ENABLE, 1);
++	rt2x00_set_field32(&reg, BCN_TIME_CFG_BEACON_GEN, 1);
++	rt2x00mmio_register_write(rt2x00dev, BCN_TIME_CFG, reg);
++
++	rt2x00mmio_register_read(rt2x00dev, INT_TIMER_EN, &reg);
++	rt2x00_set_field32(&reg, INT_TIMER_EN_PRE_TBTT_TIMER, 1);
++	rt2x00mmio_register_write(rt2x00dev, INT_TIMER_EN, reg);
++*/
++}
++
++
++static void rt2800_buffer_reset(struct rt2x00_dev* rt2x00dev)
++{
++	u32 reg;
++	rt2x00mmio_register_read(rt2x00dev, PBF_CTRL, &reg);
++	rt2x00_set_field32(&reg, PBF_CTRL_BUF_RESET, 1);
++	rt2x00mmio_register_write(rt2x00dev, PBF_CTRL, reg);
++	rt2x00_set_field32(&reg, PBF_CTRL_BUF_RESET, 0);
++	rt2x00mmio_register_write(rt2x00dev, PBF_CTRL, reg);
++}
++
++
+ static bool rt2800soc_hwcrypt_disabled(struct rt2x00_dev *rt2x00dev)
+ {
+ 	return modparam_nohwcrypt;
+@@ -211,6 +400,9 @@ static const struct rt2x00lib_ops rt2800soc_rt2x00_ops = {
+ 	.config			= rt2800_config,
+ 	.sta_add		= rt2800_sta_add,
+ 	.sta_remove		= rt2800_sta_remove,
++	.hw_restart		= rt2800_hw_restart,
++	.buffer_reset		= rt2800_buffer_reset,
++	.dump_queue_frame	= rt2800_dump_queue_frame,
+ };
+ 
+ static const struct rt2x00_ops rt2800soc_ops = {
+@@ -231,7 +423,23 @@ static const struct rt2x00_ops rt2800soc_ops = {
+ 
+ static int rt2800soc_probe(struct platform_device *pdev)
+ {
+-	return rt2x00soc_probe(pdev, &rt2800soc_ops);
++	int err = rt2x00soc_probe(pdev, &rt2800soc_ops);
++	if(err)
++		return err;
++	device_create_file(&pdev->dev, &dev_attr_fix_pre_tbtt_irq);
++	device_create_file(&pdev->dev, &dev_attr_mac_addr);
++	device_create_file(&pdev->dev, &dev_attr_mac_reg);
++	device_create_file(&pdev->dev, &dev_attr_restart_xmitter);
++	return err;
++}
++
++static int rt2800soc_remove(struct platform_device *pdev)
++{
++	device_remove_file(&pdev->dev, &dev_attr_restart_xmitter);
++	device_remove_file(&pdev->dev, &dev_attr_mac_reg);
++	device_remove_file(&pdev->dev, &dev_attr_mac_addr);
++	device_remove_file(&pdev->dev, &dev_attr_fix_pre_tbtt_irq);
++	return rt2x00soc_remove(pdev);
+ }
+ 
+ static const struct of_device_id rt2880_wmac_match[] = {
+@@ -247,7 +455,7 @@ static struct platform_driver rt2800soc_driver = {
+ 		.of_match_table	= rt2880_wmac_match,
+ 	},
+ 	.probe		= rt2800soc_probe,
+-	.remove		= rt2x00soc_remove,
++	.remove		= rt2800soc_remove,
+ 	.suspend	= rt2x00soc_suspend,
+ 	.resume		= rt2x00soc_resume,
+ };
+diff --git a/drivers/net/wireless/ralink/rt2x00/rt2x00.h b/drivers/net/wireless/ralink/rt2x00/rt2x00.h
+index 3544315..4de715c 100644
+--- a/drivers/net/wireless/ralink/rt2x00/rt2x00.h
++++ b/drivers/net/wireless/ralink/rt2x00/rt2x00.h
+@@ -633,6 +633,9 @@ struct rt2x00lib_ops {
+ 			struct ieee80211_sta *sta);
+ 	int (*sta_remove) (struct rt2x00_dev *rt2x00dev,
+ 			   struct ieee80211_sta *sta);
++	void (*hw_restart) (struct rt2x00_dev *rt2x00dev);
++	void (*buffer_reset) (struct rt2x00_dev *rt2x00dev);
++	void (*dump_queue_frame) (struct data_queue* queue);
+ };
+ 
+ /*
+diff --git a/drivers/net/wireless/ralink/rt2x00/rt2x00dev.c b/drivers/net/wireless/ralink/rt2x00/rt2x00dev.c
+index 8cb7544..7cff1cd 100644
+--- a/drivers/net/wireless/ralink/rt2x00/rt2x00dev.c
++++ b/drivers/net/wireless/ralink/rt2x00/rt2x00dev.c
+@@ -29,6 +29,7 @@
+ #include <linux/of.h>
+ #include <linux/of_net.h>
+ #include <linux/platform_device.h>
++#include <linux/string.h>
+ 
+ #include "rt2x00.h"
+ #include "rt2x00lib.h"
+@@ -40,6 +41,11 @@ void rt2x00soc_soft_reinit(struct rt2x00_dev* rt2x00dev)
+ {
+ 	rt2x00lib_stop(rt2x00dev);
+ 	rt2x00lib_uninitialize(rt2x00dev);
++	if(rt2x00dev->ops->lib->hw_restart)
++	{
++		dev_info(rt2x00dev->dev, "Calling hw restart func\n");
++		rt2x00dev->ops->lib->hw_restart(rt2x00dev);
++	}
+ 	ieee80211_restart_hw(rt2x00dev->hw);
+ }
+ 
+@@ -62,6 +68,16 @@ static ssize_t rt2x00soc_soft_reinit_store(struct device* dev, struct device_att
+ 
+ static DEVICE_ATTR(soft_reinit, 0200, NULL, rt2x00soc_soft_reinit_store);
+ 
++ssize_t rt2x00_show_beacon_status(struct device* dev, struct device_attribute* attr, char* buf)
++{
++        struct platform_device* pdev = to_platform_device(dev);
++        struct ieee80211_hw* hw = platform_get_drvdata(pdev);
++        struct rt2x00_dev* rt2x00dev = hw->priv;
++	return sprintf(buf, "Beacon queue status: %u\n", rt2x00dev->bcn->flags);
++}
++
++static DEVICE_ATTR(bcn_queue_status, 0444, rt2x00_show_beacon_status, NULL);
++
+ /*
+  * Utility functions.
+  */
+@@ -274,6 +290,7 @@ EXPORT_SYMBOL_GPL(rt2x00lib_beacondone);
+ 
+ void rt2x00lib_pretbtt(struct rt2x00_dev *rt2x00dev)
+ {
++
+ 	if (!test_bit(DEVICE_STATE_ENABLED_RADIO, &rt2x00dev->flags))
+ 		return;
+ 
+@@ -1272,6 +1289,8 @@ static void rt2x00lib_uninitialize(struct rt2x00_dev *rt2x00dev)
+ 	if (!test_and_clear_bit(DEVICE_STATE_INITIALIZED, &rt2x00dev->flags))
+ 		return;
+ 
++	printk(KERN_INFO "LIB: Uninitialize\n");
++
+ 	/*
+ 	 * Stop rfkill polling.
+ 	 */
+@@ -1296,6 +1315,8 @@ static int rt2x00lib_initialize(struct rt2x00_dev *rt2x00dev)
+ 	if (test_bit(DEVICE_STATE_INITIALIZED, &rt2x00dev->flags))
+ 		return 0;
+ 
++	printk(KERN_INFO "LIB: Initialize\n");
++
+ 	/*
+ 	 * Allocate all queue entries.
+ 	 */
+@@ -1319,7 +1340,7 @@ static int rt2x00lib_initialize(struct rt2x00_dev *rt2x00dev)
+ 	 */
+ 	if (rt2x00_has_cap_flag(rt2x00dev, REQUIRE_DELAYED_RFKILL))
+ 		rt2x00rfkill_register(rt2x00dev);
+-
++	// HW_RESTART WAS HERE
+ 	return 0;
+ }
+ 
+@@ -1330,6 +1351,8 @@ int rt2x00lib_start(struct rt2x00_dev *rt2x00dev)
+ 	if (test_bit(DEVICE_STATE_STARTED, &rt2x00dev->flags))
+ 		return 0;
+ 
++	printk(KERN_INFO "LIB: Start\n");
++
+ 	/*
+ 	 * If this is the first interface which is added,
+ 	 * we should load the firmware now.
+@@ -1356,6 +1379,16 @@ int rt2x00lib_start(struct rt2x00_dev *rt2x00dev)
+ 
+ 	set_bit(DEVICE_STATE_STARTED, &rt2x00dev->flags);
+ 
++	/*
++	 * Reenable beacon queue if there are any beaconing interfaces
++	 */
++	printk(KERN_INFO "DEV: init, got %u beaconing interfaces\n", rt2x00dev->intf_beaconing);
++	if(rt2x00dev->intf_beaconing > 0)
++	{
++		printk(KERN_INFO "Restarting beacon queue (%u == %u?)\n", rt2x00dev->bcn->qid, QID_BEACON);
++		rt2x00queue_start_queue(rt2x00dev->bcn);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -1364,6 +1397,10 @@ void rt2x00lib_stop(struct rt2x00_dev *rt2x00dev)
+ 	if (!test_and_clear_bit(DEVICE_STATE_STARTED, &rt2x00dev->flags))
+ 		return;
+ 
++	printk(KERN_INFO "LIB: Stop\n");
++
++	rt2x00queue_stop_queue(rt2x00dev->bcn);
++
+ 	/*
+ 	 * Perhaps we can add something smarter here,
+ 	 * but for now just disabling the radio should do.
+@@ -1544,7 +1581,8 @@ int rt2x00lib_probe_dev(struct rt2x00_dev *rt2x00dev)
+ 	if (!rt2x00_has_cap_flag(rt2x00dev, REQUIRE_DELAYED_RFKILL))
+ 		rt2x00rfkill_register(rt2x00dev);
+ 
+-	device_create_file(rt2x00dev->dev, &dev_attr_soft_reinit);	
++	device_create_file(rt2x00dev->dev, &dev_attr_soft_reinit);
++	device_create_file(rt2x00dev->dev, &dev_attr_bcn_queue_status);
+ 
+ 	return 0;
+ 
+@@ -1559,6 +1597,7 @@ void rt2x00lib_remove_dev(struct rt2x00_dev *rt2x00dev)
+ {
+ 	clear_bit(DEVICE_STATE_PRESENT, &rt2x00dev->flags);
+ 
++	device_remove_file(rt2x00dev->dev, &dev_attr_bcn_queue_status);
+ 	device_remove_file(rt2x00dev->dev, &dev_attr_soft_reinit);
+ 
+ 	/*
+diff --git a/drivers/net/wireless/ralink/rt2x00/rt2x00mmio.c b/drivers/net/wireless/ralink/rt2x00/rt2x00mmio.c
+index da38d25..6343931 100644
+--- a/drivers/net/wireless/ralink/rt2x00/rt2x00mmio.c
++++ b/drivers/net/wireless/ralink/rt2x00/rt2x00mmio.c
+@@ -25,6 +25,8 @@
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/slab.h>
++#include <linux/platform_device.h>
++#include <linux/string.h>
+ 
+ #include "rt2x00.h"
+ #include "rt2x00mmio.h"
+@@ -155,6 +157,8 @@ int rt2x00mmio_initialize(struct rt2x00_dev *rt2x00dev)
+ 	struct data_queue *queue;
+ 	int status;
+ 
++	dev_info(rt2x00dev->dev, "MMIO: init\n");
++
+ 	/*
+ 	 * Allocate DMA
+ 	 */
+@@ -190,6 +194,8 @@ void rt2x00mmio_uninitialize(struct rt2x00_dev *rt2x00dev)
+ {
+ 	struct data_queue *queue;
+ 
++	dev_info(rt2x00dev->dev, "MMIO: uninitialize\n");
++
+ 	/*
+ 	 * Free irq line.
+ 	 */
+diff --git a/drivers/net/wireless/ralink/rt2x00/rt2x00queue.c b/drivers/net/wireless/ralink/rt2x00/rt2x00queue.c
+index 5111ec5..940ec2f 100644
+--- a/drivers/net/wireless/ralink/rt2x00/rt2x00queue.c
++++ b/drivers/net/wireless/ralink/rt2x00/rt2x00queue.c
+@@ -31,6 +31,7 @@
+ 
+ #include "rt2x00.h"
+ #include "rt2x00lib.h"
++#include "rt2x00mmio.h"
+ 
+ struct sk_buff *rt2x00queue_alloc_rxskb(struct queue_entry *entry, gfp_t gfp)
+ {
+@@ -607,6 +608,8 @@ static void rt2x00queue_bar_check(struct queue_entry *entry)
+ 	spin_unlock_bh(&rt2x00dev->bar_list_lock);
+ }
+ 
++static void rt2x00queue_reset(struct data_queue *queue);
++
+ int rt2x00queue_write_tx_frame(struct data_queue *queue, struct sk_buff *skb,
+ 			       struct ieee80211_sta *sta, bool local)
+ {
+@@ -615,7 +618,7 @@ int rt2x00queue_write_tx_frame(struct data_queue *queue, struct sk_buff *skb,
+ 	struct txentry_desc txdesc;
+ 	struct skb_frame_desc *skbdesc;
+ 	u8 rate_idx, rate_flags;
+-	int ret = 0;
++	int i, ret = 0;
+ 
+ 	/*
+ 	 * Copy all TX descriptor information into txdesc,
+@@ -672,10 +675,37 @@ int rt2x00queue_write_tx_frame(struct data_queue *queue, struct sk_buff *skb,
+ 	spin_lock(&queue->tx_lock);
+ 
+ 	if (unlikely(rt2x00queue_full(queue))) {
+-		rt2x00_err(queue->rt2x00dev, "Resetting device due to full tx queue %d\n",
++		rt2x00_err(queue->rt2x00dev, "Resetting queue due to full tx queue %d\n",
+ 			   queue->qid);
++		// Flush queue
++//		rt2x00queue_flush_queue(queue, true);
++
++//		// Reset
++//		rt2x00queue_reset(queue);
++
++//		// Clear entries
++//		for (i = 0; i < queue->limit; i++)
++//			queue->rt2x00dev->ops->lib->clear_entry(&queue->entries[i]);
++
++		// Call reset function
++//		if(queue->rt2x00dev->ops->lib->buffer_reset)
++//		{
++//			dev_warn(queue->rt2x00dev->dev, "Performing device buffer (== queue?) reset\n");
++//			queue->rt2x00dev->ops->lib->buffer_reset(queue->rt2x00dev);
++//		}
++
++//		for (i = 0; i < queue->limit; i++)
++//			queue->entries[i].flags = 0;
++
++//		queue_work(queue->rt2x00dev->workqueue, &queue->rt2x00dev->flush_work);
++
++		if(queue->rt2x00dev->ops->lib->dump_queue_frame)
++			queue->rt2x00dev->ops->lib->dump_queue_frame(queue);
++
+ 		queue_work(queue->rt2x00dev->workqueue, &queue->rt2x00dev->reinit_work);
++
+ 		ret = -ENOBUFS;
++//		ret = 0;
+ 		goto out;
+ 	}
+ 
+-- 
+2.12.2
+

@@ -1,24 +1,13 @@
 include <nanostation.scad>
 include <util.scad>
 
-//highriser();
+highriser();
 
-rooftop();
-
-//rotate([0,0,-90]) railing_pair(700, mountangle=30, nsm=true);
-
-/*rotate([0, 20, 0]) {
-    nanostationm_mount(200, 200, 300, 60);
-};
-
-translate([0, 600, 0]) rotate([0, 20, 0]) {
-    nanostationloco_mount(200, 200, 300, 60);
-};*/
-
+//rooftop();
 
 module rooftop() {
-    width = 47580 / 10 * 2;
-    depth = 17590 / 10 * 4;
+    width = 47580;
+    depth = 17590;
     railing_inset = 700;
     railing_dist = 800;
     rail_inset = 800;
@@ -42,7 +31,7 @@ module rooftop() {
                 translate([0, railing_offset[0] + railing_dist * i, 0])
                 {
                     mirror([1, 0 , 0])
-                        railing_pair(railing_dist, mountangle=30, nsm=true);
+                        railing_pair(railing_dist, mountangle=30, nsm=(i % 3) == 0);
                     translate([depth - 2 * railing_inset, 0, 0])
                         railing_pair(railing_dist, mountangle=30, nsm=true);
                 };
@@ -54,7 +43,7 @@ module rooftop() {
                     rotate([0, 0, -90])
                         railing_pair(railing_dist, mountangle=30, loco=true);
                     translate([0, width - 2 * railing_inset, 0]) rotate([0, 0, -90]) mirror([1, 0, 0])
-                        railing_pair(railing_dist, mountangle=30, nsm=true);
+                        railing_pair(railing_dist, mountangle=30, nsm=(i % 2 == 0));
                 };
             };
         };
@@ -110,7 +99,9 @@ module highriser() {
     width = 47580;
     depth = 17590;
     
-    cube([depth, width, height]);
+    color(rgb_normalize([150, 150, 150])) cube([depth, width, height]);
+    
+    translate([0, 0, height]) rooftop();
 };
 
 

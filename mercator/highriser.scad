@@ -1,13 +1,14 @@
 include <nanostation.scad>
+include <boltedplates.scad>
 include <util.scad>
 
-highriser();
+//highriser();
 
-//rooftop();
+rooftop();
 
 module rooftop() {
-    width = 47580;
-    depth = 17590;
+    width = 47580 / 10 * 2;
+    depth = 17590 / 10 * 4;
     railing_inset = 700;
     railing_dist = 800;
     rail_inset = 800;
@@ -141,6 +142,12 @@ module railing_pair(dist, mountangle=0, pos=0.7, off=60, length=400, nsm=false, 
     translate([0, dist + material_width / 2, 0] + vec_scaled) {
         rotate([0, -angle, 0]) {
             translate([0, 0, -material_depth/2]) {
+                if(nsm || loco) rotate([0, 0, 90]) {
+                    bolted_plates([material_depth + 20, material_depth +
+                 20, 4], dist=material_width);
+                    translate([-dist, 0, 0]) bolted_plates([material_depth + 20, material_depth +
+                 20, 4], dist=material_width);
+                };
                 rotate([0, angle, 0]) {
                     rotate([0, mountangle, 0]) {
                         if(nsm) {

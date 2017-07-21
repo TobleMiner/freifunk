@@ -4,7 +4,9 @@ include <util.scad>
 
 //highriser();
 
-rooftop();
+//rooftop();
+
+railing_pair(400, mountangle=20, length=300, nsm=true, pos=0.6);
 
 module rooftop() {
     width = 47580 / 10 * 2;

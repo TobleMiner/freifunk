@@ -1,5 +1,4 @@
 include <nanostation.scad>
-
 include <util.scad>
 
 //highriser();
@@ -30,26 +29,33 @@ module rooftop() {
     
     n_railing_elements = [floor(rail_length[0] / railing_dist), floor(rail_length[1] / railing_dist)];
     
+    railing_offset = [(rail_length[0] - n_railing_elements[0] * railing_dist) / 2, (rail_length[1] - n_railing_elements[1] * railing_dist) / 2];
+    
     color(rgb_normalize([100, 100, 100])) cube([depth, width, strength]);
         
     translate([0, 0, strength]) {
         translate([rail_inset, rail_inset, 0]) {
-            rails(width - 2 * rail_inset, depth - 2 * rail_inset);
+            rails(rail_length[0], rail_length[1]);
         };
         translate([railing_inset, rail_inset, 0]) {
-            for(i = [0:n_railing_elements[0]]) {
-                translate([0, railing_dist * i, 0]) mirror([1, 0 , 0])
-                    railing_pair(railing_dist, mountangle=30, nsm=true);
-                translate([depth - 2 * railing_inset , railing_dist * i, 0])
-                    railing_pair(railing_dist, mountangle=30, nsm=true);
+            for(i = [0:n_railing_elements[0] - 1]) {
+                translate([0, railing_offset[0] + railing_dist * i, 0])
+                {
+                    mirror([1, 0 , 0])
+                        railing_pair(railing_dist, mountangle=30, nsm=true);
+                    translate([depth - 2 * railing_inset, 0, 0])
+                        railing_pair(railing_dist, mountangle=30, nsm=true);
+                };
             };
         };
         translate([rail_inset, railing_inset, 0]) {
-            for(i = [0:n_railing_elements[1]]) {
-                translate([railing_dist * i, 0, 0]) rotate([0, 0, -90])
-                    railing_pair(railing_dist, mountangle=30, loco=true);
-                translate([railing_dist * i, width - 2 * railing_inset, 0]) rotate([0, 0, -90]) mirror([1, 0, 0])
-                    railing_pair(railing_dist, mountangle=30, nsm=true);
+            for(i = [0:n_railing_elements[1] - 1]) {
+                translate([railing_offset[1] + railing_dist * i, 0, 0]) {
+                    rotate([0, 0, -90])
+                        railing_pair(railing_dist, mountangle=30, loco=true);
+                    translate([0, width - 2 * railing_inset, 0]) rotate([0, 0, -90]) mirror([1, 0, 0])
+                        railing_pair(railing_dist, mountangle=30, nsm=true);
+                };
             };
         };
     };

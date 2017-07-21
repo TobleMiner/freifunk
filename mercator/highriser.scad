@@ -6,6 +6,8 @@ include <util.scad>
 
 rooftop();
 
+//rotate([0,0,-90]) railing_pair(700, mountangle=30, nsm=true);
+
 /*rotate([0, 20, 0]) {
     nanostationm_mount(200, 200, 300, 60);
 };
@@ -16,23 +18,40 @@ translate([0, 600, 0]) rotate([0, 20, 0]) {
 
 
 module rooftop() {
-    width = 47580;
-    depth = 17590;
+    width = 47580 / 10 * 2;
+    depth = 17590 / 10 * 4;
     railing_inset = 700;
+    railing_dist = 800;
     rail_inset = 800;
 
     strength = 10;
     
+    rail_length = [width - 2 * rail_inset, depth - 2 * rail_inset];
+    
+    n_railing_elements = [floor(rail_length[0] / railing_dist), floor(rail_length[1] / railing_dist)];
+    
     color(rgb_normalize([100, 100, 100])) cube([depth, width, strength]);
         
     translate([0, 0, strength]) {
-        translate([rail_inset, rail_inset, 0])
+        translate([rail_inset, rail_inset, 0]) {
             rails(width - 2 * rail_inset, depth - 2 * rail_inset);
-//        rotate([0, 0, 180]) {
-        mirror([1, , 0]) {
-            railing_pair(700, mountangle=30, nsm=true);
         };
-        //railing_pair(700, mountangle=30, nsm=true);
+        translate([railing_inset, rail_inset, 0]) {
+            for(i = [0:n_railing_elements[0]]) {
+                translate([0, railing_dist * i, 0]) mirror([1, 0 , 0])
+                    railing_pair(railing_dist, mountangle=30, nsm=true);
+                translate([depth - 2 * railing_inset , railing_dist * i, 0])
+                    railing_pair(railing_dist, mountangle=30, nsm=true);
+            };
+        };
+        translate([rail_inset, railing_inset, 0]) {
+            for(i = [0:n_railing_elements[1]]) {
+                translate([railing_dist * i, 0, 0]) rotate([0, 0, -90])
+                    railing_pair(railing_dist, mountangle=30, loco=true);
+                translate([railing_dist * i, width - 2 * railing_inset, 0]) rotate([0, 0, -90]) mirror([1, 0, 0])
+                    railing_pair(railing_dist, mountangle=30, nsm=true);
+            };
+        };
     };
 };
 

@@ -25,13 +25,15 @@ module bolted_plates(size=[50, 50, 4], dist=15, border=5, bolt=5) {
         [0, -bolt_offset, size[1] - bolt_offset],
         [0, bolt_offset - size[0], size[1] - bolt_offset]
     ];
-    
-    rotate([90, 0, -90]) mirror([0, 0, 1]) cube(size);
-    translate([dist + size[2], 0, 0]) rotate([90, 0, -90]) mirror([0, 0, 1]) cube(size);
-    for(i = [0:len(bolt_offsets) - 1]) {
-        translate(bolt_offsets[i]) {
-            translate([-bolt_head_length, 0, 0]) bolt(bolt * 2 - 1, bolt, bolt_head_length, size[2] * 2 + dist + nut_length + bolt_hangover);
-            translate([size[2] * 2 + dist, 0, 0]) nut(bolt, bolt * 2 - 1, nut_length);
+
+    translate([-(size[2] + dist / 2), size[0] / 2, -size[1] / 2]) {
+        rotate([90, 0, -90]) mirror([0, 0, 1]) cube(size);
+        translate([dist + size[2], 0, 0]) rotate([90, 0, -90]) mirror([0, 0, 1]) cube(size);
+        for(i = [0:len(bolt_offsets) - 1]) {
+            translate(bolt_offsets[i]) {
+                translate([-bolt_head_length, 0, 0]) bolt(bolt * 2 - 1, bolt, bolt_head_length, size[2] * 2 + dist + nut_length + bolt_hangover);
+                translate([size[2] * 2 + dist, 0, 0]) nut(bolt, bolt * 2 - 1, nut_length);
+            };
         };
     };
 }

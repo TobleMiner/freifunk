@@ -5,11 +5,11 @@ import sys
 import requests
 import re
 
+from argparse import ArgumentParser
 from enum import Enum
+from os import path
 from queue import Queue
 
-
-DEBUG = False
 
 NODES_JSON = 'https://hopglass.freifunk.in-kiel.de/nodes.json'
 GRAPH_JSON = 'https://hopglass.freifunk.in-kiel.de/graph.json'
@@ -20,6 +20,14 @@ FWVERSIONS = {
     "max": "2018.1.4~ngly-591"
   }
 }
+
+parser = ArgumentParser()
+parser.add_argument('--debug', '-d', action='store_true')
+parser.add_argument('--nodes', '-n')
+parser.add_argument('--graph', '-g')
+args = parser.parse_args()
+
+DEBUG = args.debug
 
 re_sanitize_address = re.compile('^([0-9a-fA-F]*:*)*$')
 re_sanitize_fwversion = re.compile('[\w\~\-\+\.\*\$\[\]&"\\\(\)]+')
@@ -105,12 +113,15 @@ def newer_than(a, b, debug=False):
   return False
 
 def get_json(url):
-  response = requests.get(url)
+  if path.isfile(url):
+    return json.loads(open(url, encoding='utf8').read())
+  else:
+    response = requests.get(url)
 
-  if response.status_code != 200:
-    return None
+    if response.status_code != 200:
+      return None
 
-  return json.loads(response.text)
+    return json.loads(response.text)
 
 class Node():
   def __init__(self, node):
@@ -233,8 +244,8 @@ def gw_path(mesh, start, end):
 
   return None
 
-nodes = get_json(NODES_JSON)
-graph = get_json(GRAPH_JSON)
+nodes = get_json(args.nodes if args.nodes else NODES_JSON)
+graph = get_json(args.graph if args.graph else GRAPH_JSON)
 
 if not nodes or not graph:
   sys.exit(1)
